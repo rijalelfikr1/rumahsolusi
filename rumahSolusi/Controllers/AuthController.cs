@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
+﻿
 
 namespace rumahSolusi.Controllers
 {
@@ -7,9 +6,13 @@ namespace rumahSolusi.Controllers
     [ApiController]
     public class AuthController : Controller
     {
+        public static UserModel user = new UserModel();
         private readonly DataContext _context;
-        public AuthController(DataContext context)
+        private readonly IConfiguration _configuration;
+
+        public AuthController(IConfiguration configuration, DataContext context)
         {
+            _configuration = configuration;
             _context = context;
         }
         private async Task<UserModel> GetUserById(int id)
@@ -43,8 +46,19 @@ namespace rumahSolusi.Controllers
             {
                 return BadRequest("User di Non Aktifkan");
             }
+            string token = CreateToken(user);
 
-            return Ok(user.VerificationToken);
+            var refreshToken = new RefreshToken
+            {
+                Email = request.Email,
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                TokenExpires = DateTime.Now.AddDays(7),
+                TokenCreated = DateTime.Now
+            };
+
+            SetRefreshToken(refreshToken);
+
+            return Ok(token);
         }
 
         [HttpPost("register")]
@@ -71,7 +85,7 @@ namespace rumahSolusi.Controllers
             _context.MstUsers.Add(user);
             await _context.SaveChangesAsync();
 
-            return Ok("User Sukses dibuat");
+            return Ok(user.VerificationToken);
         }
 
 
@@ -87,7 +101,7 @@ namespace rumahSolusi.Controllers
             user.VerifiedAt = DateTime.Now;
             await _context.SaveChangesAsync();
 
-            return Ok("User diverifikasi :)");
+            return Ok("User berhasil diverifikasi :)");
         }
 
         [HttpPut("Update-User")]
@@ -144,7 +158,76 @@ namespace rumahSolusi.Controllers
             await _context.SaveChangesAsync();
             return Ok("User Berhasil di Non Aktifkan");
 
-        }  
+        }
+
+        [HttpDelete("Delete-User")]
+        public async Task<IActionResult> DeleteUser(int Id)
+        {
+            var user = await GetUserById(Id);
+            if (user == null)
+            {
+                return BadRequest("Tidak ada user");
+            }
+            else
+            {
+                _context.MstUsers.Remove(user);
+                await _context.SaveChangesAsync();
+                return Ok("Berhasil Delete User");
+            }
+        }
+
+        [HttpPut]
+        private void SetRefreshToken(RefreshToken newRefreshToken)
+        {
+            var user = _context.MstUsers.FirstOrDefault(u => u.Email == newRefreshToken.Email);
+
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = newRefreshToken.TokenExpires
+            };
+            Response.Cookies.Append("refreshToken", newRefreshToken.Token, cookieOptions);
+
+            user.RefreshToken = newRefreshToken.Token;
+            user.TokenCreated = newRefreshToken.TokenCreated;
+            user.TokenExpires = newRefreshToken.TokenExpires;
+            _context.SaveChanges();
+        }
+
+        /*private RefreshToken GenerateRefreshToken()
+        {
+            var refreshToken = new RefreshToken
+            {
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                TokenExpires = DateTime.Now.AddDays(7),
+                TokenCreated = DateTime.Now
+            };
+
+            return refreshToken;
+        }*/
+
+        private string CreateToken(UserModel user)
+        {
+            List<Claim> claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.UserName),
+                new Claim(ClaimTypes.Email, user.Email)
+            };
+
+            var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
+                _configuration.GetSection("AppSettings:Token").Value));
+
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+
+            var token = new JwtSecurityToken(
+                claims: claims,
+                expires: DateTime.Now.AddDays(1),
+                signingCredentials: creds);
+
+            var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return jwt;
+        }
 
         private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
         {
