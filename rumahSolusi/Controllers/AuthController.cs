@@ -6,7 +6,6 @@ namespace rumahSolusi.Controllers
     [ApiController]
     public class AuthController : Controller
     {
-        public static UserModel user = new UserModel();
         private readonly DataContext _context;
         private readonly IConfiguration _configuration;
 

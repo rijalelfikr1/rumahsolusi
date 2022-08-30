@@ -13,7 +13,6 @@ namespace rumahSolusi.Data
         {
             base.OnConfiguring(optionsBuilder);
             optionsBuilder
-
                 .UseSqlServer("Data Source=RIJALELFIKRI\\SQLEXPRESS;Initial Catalog=RumahSolusi;Integrated Security=True;" + "MultipleActiveResultSets = True;");
         }
         public DbSet<UserModel> MstUsers { get; set; }
